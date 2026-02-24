@@ -20,10 +20,10 @@ export default async function Admin1Page() {
       <h1>Admin1</h1>
       <p>Welcome to the Admin1 landing page.</p>
 
-      <h2 style={{ marginTop: 20 }}>Total Money In Bank</h2>
-      <p style={{ fontSize: 24, fontWeight: "bold" }}>
+      <article style={{ marginTop: 20, fontSize: 24 }}>
+        <header>Total Money</header>
         ${total.toLocaleString()}
-      </p>
+      </article>
     </main>
   );
 }
