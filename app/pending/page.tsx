@@ -1,165 +1,54 @@
-"use client"; // Enables client-side rendering (needed for hooks like useEffect, router, etc.)
+"use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { db } from "../firebase";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { useTransaction } from "../context/TransactionContext";
 
 export default function PendingPage() {
-  const router = useRouter(); // Used for navigation
-  const searchParams = useSearchParams(); // Access query parameters from URL
+  const router = useRouter();
+  const { transaction } = useTransaction();
 
-  // Existing params
-  const accountId = searchParams.get("accountId");
+  const accountID = transaction.accountID;
+  const amount = transaction.amount;
+  const type = transaction.type;
 
-  // Transfer params
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
-
-  const amount = searchParams.get("amount");
-  const type = searchParams.get("type") || "withdraw"; // Default to withdraw if not provided
-
-  // Track current transaction status
   const [status, setStatus] = useState<"processing" | "success" | "error">(
     "processing"
   );
-
-  // Message to display to user (success or error)
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    // Function to handle the transaction logic
     const processTransaction = async () => {
-      // Validate required data
-      if (!amount) {
+      // Validate
+      if (!amount || !accountID || !type) {
         setStatus("error");
         setMessage("Missing transaction details.");
         return;
       }
 
-      const transactionAmount = Number(amount);
-
       try {
-        // Transfer logic
-        if (type === "transfer") {
-          if (!from || !to) {
-            setStatus("error");
-            setMessage("Missing transfer accounts.");
-            return;
-          }
+        const transactionAmount = Number(amount);
 
-          // Fetch both accounts
-          const [fromRes, toRes] = await Promise.all([
-            fetch(`https://695f03af7f037703a8128fbf.mockapi.io/api/v1/Account/${from}`),
-            fetch(`https://695f03af7f037703a8128fbf.mockapi.io/api/v1/Account/${to}`)
-          ]);
+        // Fetch account from Firestore
+        const accountRef = doc(db, "Accounts", accountID);
+        const accountSnap = await getDoc(accountRef);
 
-          // If one or both accounts don't exist
-          if (!fromRes.ok || !toRes.ok) {
-            setStatus("error");
-            setMessage("One or both accounts not found.");
-            return;
-          }
-
-          // Parse account data
-          const fromAccount = await fromRes.json();
-          const toAccount = await toRes.json();
-
-          const fromBalance = Number(fromAccount.balance);
-          const toBalance = Number(toAccount.balance);
-
-          // Prevent overdraft
-          if (transactionAmount > fromBalance) {
-            setStatus("error");
-            setMessage("Insufficient funds.");
-            return;
-          }
-
-          const newFromBalance = fromBalance - transactionAmount;
-          const newToBalance = toBalance + transactionAmount;
-
-          // Append transaction history
-          const fromTransactions = [
-            ...(fromAccount.transactions || []),
-            {
-              type: "transfer-out",
-              amount: transactionAmount,
-              to,
-              date: new Date().toISOString(),
-            },
-          ];
-
-          const toTransactions = [
-            ...(toAccount.transactions || []),
-            {
-              type: "transfer-in",
-              amount: transactionAmount,
-              from,
-              date: new Date().toISOString(),
-            },
-          ];
-
-          // Simulate processing delay
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-
-          // Update both accounts
-          await Promise.all([
-            fetch(`https://695f03af7f037703a8128fbf.mockapi.io/api/v1/Account/${from}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                balance: newFromBalance,
-                transactions: fromTransactions,
-              }),
-            }),
-            fetch(`https://695f03af7f037703a8128fbf.mockapi.io/api/v1/Account/${to}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                balance: newToBalance,
-                transactions: toTransactions,
-              }),
-            }),
-          ]);
-
-          // Mark success and show confirmation message
-          setStatus("success");
-          setMessage(
-            `Transferred $${transactionAmount} from ${from} to ${to}.`
-          );
-
-          // Redirect after delay
-          setTimeout(() => {
-            router.push(`/accounts/${from}`);
-          }, 2000);
-
-          return;
-        }
-
-        // Deposit / Withdraw logic
-        if (!accountId) {
-          setStatus("error");
-          setMessage("Missing account details.");
-          return;
-        }
-
-        // Fetch account data
-        const res = await fetch(
-          `https://695f03af7f037703a8128fbf.mockapi.io/api/v1/Account/${accountId}`
-        );
-
-        // If account doesn't exist
-        if (!res.ok) {
+        if (!accountSnap.exists()) {
           setStatus("error");
           setMessage("Account not found.");
           return;
         }
 
-        const account = await res.json();
+        const account = accountSnap.data();
         const currentBalance = Number(account.balance);
-
         let newBalance = currentBalance;
 
-        // Handle withdrawal
-        if (type === "withdraw") {
+        // Calculate new balance
+        if (type === "deposit") {
+          newBalance = currentBalance + transactionAmount;
+        } else if (type === "withdraw") {
           if (transactionAmount > currentBalance) {
             setStatus("error");
             setMessage("Insufficient funds.");
@@ -167,12 +56,8 @@ export default function PendingPage() {
           }
           newBalance = currentBalance - transactionAmount;
         }
-        // Handle deposit
-        else if (type === "deposit") {
-          newBalance = currentBalance + transactionAmount;
-        }
 
-        // Append transaction history
+        // Update transaction history
         const updatedTransactions = [
           ...(account.transactions || []),
           {
@@ -185,44 +70,32 @@ export default function PendingPage() {
         // Simulate processing delay
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
-        // Update account
-        await fetch(
-          `https://695f03af7f037703a8128fbf.mockapi.io/api/v1/Account/${accountId}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              balance: newBalance,
-              transactions: updatedTransactions,
-            }),
-          }
-        );
+        // Update in Firestore
+        await updateDoc(accountRef, {
+          balance: newBalance,
+          transactions: updatedTransactions,
+        });
 
-        // Mark success and show confirmation message
         setStatus("success");
         setMessage(
           `${type === "deposit" ? "Deposited" : "Withdrew"} $${transactionAmount}. New balance: $${newBalance}`
         );
 
-        // Redirect after delay
         setTimeout(() => {
-          router.push(`/accounts/${accountId}`);
+          router.push(`/accounts/${accountID}`);
         }, 2000);
       } catch (err) {
-        // Catch unexpected errors
         console.error(err);
         setStatus("error");
         setMessage("Transaction failed.");
       }
     };
 
-    // Run transaction when component loads
     processTransaction();
-  }, [accountId, from, to, amount, type, router]);
+  }, [accountID, amount, type, router]);
 
   return (
     <div style={{ padding: 20 }}>
-      {/* Show while processing */}
       {status === "processing" && (
         <>
           <h2>Processing...</h2>
@@ -230,7 +103,6 @@ export default function PendingPage() {
         </>
       )}
 
-      {/* Show success */}
       {status === "success" && (
         <>
           <h2>Success</h2>
@@ -238,7 +110,6 @@ export default function PendingPage() {
         </>
       )}
 
-      {/* Show error */}
       {status === "error" && (
         <>
           <h2>Error</h2>
