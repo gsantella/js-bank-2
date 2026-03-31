@@ -1,7 +1,7 @@
 "use client"; // Marks this component for client-side rendering in Next.js
 
 import { useEffect, useState } from "react";
-import { db } from "../../app/firebase";
+import { db } from "../app/firebase";
 import { collection, getDocs } from "firebase/firestore";
 
 export default function TotalMoney() {
