@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import TotalMoney from "@/components/TotalMoney";
 import TellerFunc from "@/components/TellerFunc";
+import History from "@/components/History";
 
 export default function Admin1Page() {
   const [loggedInAccountId, setLoggedInAccountId] = useState<string | null>(null);
@@ -109,7 +110,7 @@ export default function Admin1Page() {
         {activeComponent === "deposit" && <TellerFunc type="deposit" />}
         {activeComponent === "withdraw" && <TellerFunc type="withdraw" />}
         {activeComponent === "transfer" && <TellerFunc type="transfer" />}
-        {/*activeComponent === "history" && <History />*/}
+        {activeComponent === "history" && <History />}
         {activeComponent === "logout" && <p>Logging out...</p>}
       </section>
     </main>

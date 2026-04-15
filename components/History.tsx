@@ -2,34 +2,31 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { db } from "../app/firebase";
+import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
+
 
 export default function History() {
   const router = useRouter(); // navigation
-
-  const [status, setStatus] = useState<"processing" | "success" | "error">("processing");
-  const [message, setMessage] = useState("");
+  const [accounts, setAccounts] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const loadAllTransactions = async () => {
-      try {
-        const res = await fetch(
-          "https://695f03af7f037703a8128fbf.mockapi.io/api/v1/Account"
-        );
-
-        if (!res.ok) {
-          setStatus("error");
-          setMessage("Failed to fetch accounts.");
-          return;
-        }
-
-        const accounts = await res.json();
+            
+      const querySnapshot = await getDocs(collection(db, "Accounts"));
+      const accountList = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+        setAccounts(accountList)
 
         // combine transactions
-        const allTransactions = accounts.flatMap((account: any) =>
-          (account.transactions || []).map((t: any) => ({
+      const allTransactions = accountList.flatMap((Accounts: any) =>
+          (Accounts.transactions || []).map((t: any) => ({
             ...t,
-            accountId: account.id,
+            accountId: Accounts.id,
           }))
         );
 
@@ -40,15 +37,10 @@ export default function History() {
         );
 
         setTransactions(allTransactions);
-        setStatus("success");
-      } catch (err) {
-        console.error(err);
-        setStatus("error");
-        setMessage("Failed to load transaction history.");
-      }
-    };
+      } 
 
     loadAllTransactions();
+    console.log(transactions)
   }, []);
 
   // filter transfers
@@ -63,24 +55,7 @@ export default function History() {
     <div style={{ padding: 20 }}>
       <h2>All Transactions</h2>
 
-      {/* loading */}
-      {status === "processing" && <p>Loading...</p>}
-
-      {/* error */}
-      {status === "error" && (
-        <>
-          <p>{message}</p>
-          <button onClick={() => router.back()}>Go Back</button>
-        </>
-      )}
-
-      {/* empty */}
-      {status === "success" && transactions.length === 0 && (
-        <p>No transactions found.</p>
-      )}
-
-      {/* transfer history with scroll */}
-      {status === "success" && transferTransactions.length > 0 && (
+      {(
         <>
           <h3>Transfer History</h3>
           <div style={{ maxHeight: "200px", overflowY: "auto", border: "1px solid #ccc", padding: "10px" }}>
@@ -98,7 +73,7 @@ export default function History() {
       )}
 
       {/* all activity with scroll */}
-      {status === "success" && transactions.length > 0 && (
+      {(
         <>
           <h3>All Activity</h3>
           <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #ccc", padding: "10px" }}>
